@@ -11,7 +11,7 @@ function Login({ onLogin }) {
   const handleSubmit = async (e) => {
     e.preventDefault();
     try {
-      const response = await axios.post("http://127.0.0.1:8000/login", {
+      const response = await axios.post("https://ai-resume-analyzer-b219.onrender.com/login", {
         username,
         password,
       });

@@ -6,7 +6,7 @@ function History({ token, user, onLogout }) {
 
   const fetchHistory = async () => {
     try {
-      const response = await axios.get("http://127.0.0.1:8000/history", {
+      const response = await axios.get("https://ai-resume-analyzer-b219.onrender.com/history", {
         headers: {
           Authorization: `Bearer ${token}`,
         },
@@ -25,7 +25,7 @@ function History({ token, user, onLogout }) {
 
   const deleteAnalysis = async (id) => {
     try {
-      await axios.delete(`http://127.0.0.1:8000/history/${id}`, {
+      await axios.delete(`https://ai-resume-analyzer-b219.onrender.com/history/${id}`, {
         headers: {
           Authorization: `Bearer ${token}`,
         },

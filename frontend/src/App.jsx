@@ -42,7 +42,7 @@ function App() {
       setLoading(true);
 
       const response = await axios.post(
-        "http://127.0.0.1:8000/upload",
+        "https://ai-resume-analyzer-b219.onrender.com/upload",
         formData,
         {
           headers: {

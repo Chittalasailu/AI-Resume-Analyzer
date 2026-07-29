@@ -12,12 +12,12 @@ function Signup({ onLogin }) {
   const handleSubmit = async (e) => {
     e.preventDefault();
     try {
-      await axios.post("http://127.0.0.1:8000/signup", {
+      await axios.post("https://ai-resume-analyzer-b219.onrender.com/signup", {
         username,
         email,
         password,
       });
-      const response = await axios.post("http://127.0.0.1:8000/login", {
+      const response = await axios.post("https://ai-resume-analyzer-b219.onrender.com/login", {
         username,
         password,
       });

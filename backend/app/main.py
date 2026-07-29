@@ -1,4 +1,6 @@
+import logging
 import os
+import traceback
 import uuid
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -22,6 +24,9 @@ UPLOAD_DIR.mkdir(exist_ok=True)
 SECRET_KEY = os.getenv("JWT_SECRET", "dev-secret-key")
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 30
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger("resume_analyzer")
 
 
 class SignupRequest(BaseModel):
@@ -52,10 +57,13 @@ app = FastAPI(
     description="Backend API for uploading resumes and preparing analysis workflows.",
 )
 
-# Enable CORS for the React frontend running locally.
+# Enable CORS for the deployed frontend.
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173"],
+    allow_origins=[
+        "http://localhost:5173",
+        "https://ai-resume-analyzer-tan-theta.vercel.app",
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -100,25 +108,37 @@ def read_root():
 
 @app.post("/signup")
 def signup(payload: SignupRequest):
-    if get_user_by_username(payload.username) or get_user_by_email(str(payload.email)):
-        raise HTTPException(status_code=400, detail="User already exists")
+    logger.info("Signup request received for username=%s", payload.username)
+    try:
+        logger.info("Signup request validation passed")
+        logger.info("Signup email validation passed for %s", payload.email)
 
-    user = {
-        "id": str(uuid.uuid4()),
-        "username": payload.username,
-        "email": str(payload.email),
-        "password_hash": hash_password(payload.password),
-    }
-    save_user(
-        User(
-            id=user["id"],
-            username=user["username"],
-            email=user["email"],
-            password_hash=user["password_hash"],
+        existing_user = get_user_by_username(payload.username) or get_user_by_email(str(payload.email))
+        if existing_user:
+            logger.warning("Signup rejected: user already exists for username=%s email=%s", payload.username, payload.email)
+            raise HTTPException(status_code=400, detail="User already exists")
+
+        logger.info("Signup password hashing started")
+        password_hash = hash_password(payload.password)
+        logger.info("Signup password hashing completed")
+
+        logger.info("Signup saving user to in-memory store")
+        user_id = str(uuid.uuid4())
+        user = User(
+            id=user_id,
+            username=payload.username,
+            email=str(payload.email),
+            password_hash=password_hash,
         )
-    )
+        save_user(user)
+        logger.info("Signup user saved successfully id=%s", user_id)
 
-    return {"message": "User created successfully"}
+        return {"message": "User created successfully"}
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.exception("Signup failed with unexpected exception")
+        raise HTTPException(status_code=500, detail=f"Signup failed: {exc}") from exc
 
 
 @app.post("/login")

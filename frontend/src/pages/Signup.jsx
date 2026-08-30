@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import axios from "axios";
+import { API_BASE_URL } from "../api/config";
 
 function Signup({ onLogin }) {
   const [username, setUsername] = useState("");
@@ -12,12 +13,12 @@ function Signup({ onLogin }) {
   const handleSubmit = async (e) => {
     e.preventDefault();
     try {
-      await axios.post("https://ai-resume-analyzer-b219.onrender.com/signup", {
+      await axios.post(`${API_BASE_URL}/signup`, {
         username,
         email,
         password,
       });
-      const response = await axios.post("https://ai-resume-analyzer-b219.onrender.com/login", {
+      const response = await axios.post(`${API_BASE_URL}/login`, {
         username,
         password,
       });

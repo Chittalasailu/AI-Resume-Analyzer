@@ -11,6 +11,7 @@ import Login from "./pages/Login";
 import Signup from "./pages/Signup";
 import History from "./pages/History";
 import { generateResumeReport } from "./utils/pdfGenerator";
+import { API_BASE_URL } from "./api/config";
 import "./App.css";
 
 function App() {
@@ -42,7 +43,7 @@ function App() {
       setLoading(true);
 
       const response = await axios.post(
-        "https://ai-resume-analyzer-b219.onrender.com/upload",
+        `${API_BASE_URL}/upload`,
         formData,
         {
           headers: {

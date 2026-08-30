@@ -1,12 +1,13 @@
 import { useEffect, useState } from "react";
 import axios from "axios";
+import { API_BASE_URL } from "../api/config";
 
 function History({ token, user, onLogout }) {
   const [analyses, setAnalyses] = useState([]);
 
   const fetchHistory = async () => {
     try {
-      const response = await axios.get("https://ai-resume-analyzer-b219.onrender.com/history", {
+      const response = await axios.get(`${API_BASE_URL}/history`, {
         headers: {
           Authorization: `Bearer ${token}`,
         },
@@ -25,7 +26,7 @@ function History({ token, user, onLogout }) {
 
   const deleteAnalysis = async (id) => {
     try {
-      await axios.delete(`https://ai-resume-analyzer-b219.onrender.com/history/${id}`, {
+      await axios.delete(`${API_BASE_URL}/history/${id}`, {
         headers: {
           Authorization: `Bearer ${token}`,
         },

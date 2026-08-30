@@ -21,7 +21,14 @@ BASE_DIR: Final[Path] = Path(__file__).resolve().parent.parent
 UPLOAD_DIR: Final[Path] = BASE_DIR / "uploads"
 UPLOAD_DIR.mkdir(exist_ok=True)
 
-SECRET_KEY = os.getenv("JWT_SECRET", "dev-secret-key")
+IS_RENDER: Final[bool] = os.getenv("RENDER") is not None
+SECRET_KEY = os.getenv("JWT_SECRET")
+if not SECRET_KEY:
+    if IS_RENDER:
+        raise RuntimeError(
+            "JWT_SECRET environment variable must be set when running on Render."
+        )
+    SECRET_KEY = "dev-secret-key"
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 30
 
@@ -57,13 +64,22 @@ app = FastAPI(
     description="Backend API for uploading resumes and preparing analysis workflows.",
 )
 
-# Enable CORS for the deployed frontend.
+# Enable CORS for local development and the deployed frontend(s).
+# FRONTEND_URL can be set to add/override the production origin without a code change.
+DEFAULT_ALLOWED_ORIGINS: Final[list[str]] = [
+    "http://localhost:5173",
+    "http://localhost:5174",
+    "https://ai-resume-analyzer-tan-theta.vercel.app",
+    "https://ai-resume-analyzer-sailu1.vercel.app",
+]
+extra_frontend_url = os.getenv("FRONTEND_URL")
+allowed_origins = list(DEFAULT_ALLOWED_ORIGINS)
+if extra_frontend_url and extra_frontend_url not in allowed_origins:
+    allowed_origins.append(extra_frontend_url)
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:5173",
-        "https://ai-resume-analyzer-tan-theta.vercel.app",
-    ],
+    allow_origins=allowed_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

@@ -8,11 +8,14 @@ from typing import Final, Optional
 
 import bcrypt
 import jwt
+from dotenv import load_dotenv
 from fastapi import Depends, FastAPI, File, Header, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, EmailStr
 
-from app.ai import analyze_resume
+load_dotenv()
+
+from app.ai import AnalysisError, EmptyResumeTextError, analyze_resume
 from app.models import Analysis, User, add_analysis, analyses_db, get_user_by_email, get_user_by_id, get_user_by_username, save_user
 from app.parser import UnsupportedFileTypeError, extract_text
 
@@ -223,6 +226,12 @@ async def upload_resume(file: UploadFile = File(...), user: object = Depends(get
 
     except FileNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc))
+
+    except EmptyResumeTextError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+    except AnalysisError as exc:
+        raise HTTPException(status_code=503, detail=str(exc))
 
     except Exception as exc:
         import traceback

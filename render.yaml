@@ -1,3 +1,9 @@
+databases:
+  - name: ai-resume-analyzer-db
+    plan: free
+    databaseName: ai_resume_analyzer
+    user: ai_resume_analyzer
+
 services:
   - type: web
     name: ai-resume-analyzer-backend
@@ -14,3 +20,7 @@ services:
         sync: false
       - key: FRONTEND_URL
         value: https://ai-resume-analyzer-sailu1.vercel.app
+      - key: DATABASE_URL
+        fromDatabase:
+          name: ai-resume-analyzer-db
+          property: connectionString

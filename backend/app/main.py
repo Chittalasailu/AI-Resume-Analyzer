@@ -1,6 +1,7 @@
 import logging
 import os
 import uuid
+from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Final, Optional
@@ -11,11 +12,23 @@ from dotenv import load_dotenv
 from fastapi import Depends, FastAPI, File, Header, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, EmailStr, Field
+from sqlalchemy.orm import Session
 
 load_dotenv()
 
 from app.ai import AnalysisError, EmptyResumeTextError, analyze_resume
-from app.models import Analysis, User, add_analysis, analyses_db, get_user_by_email, get_user_by_id, get_user_by_username, save_user
+from app.database import get_db, init_db
+from app.models import (
+    Analysis,
+    User,
+    add_analysis,
+    delete_analysis,
+    get_analyses_by_user,
+    get_user_by_email,
+    get_user_by_id,
+    get_user_by_username,
+    save_user,
+)
 from app.parser import UnsupportedFileTypeError, extract_text
 
 # Base directory for the backend project.
@@ -59,11 +72,18 @@ class AnalysisRequest(BaseModel):
     job_match: Optional[int] = 0
 
 
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    init_db()
+    yield
+
+
 # FastAPI application instance.
 app = FastAPI(
     title="AI Resume Analyzer API",
     version="1.0.0",
     description="Backend API for uploading resumes and preparing analysis workflows.",
+    lifespan=lifespan,
 )
 
 # Enable CORS for local development and the deployed frontend(s).
@@ -104,14 +124,16 @@ def create_access_token(user_id: str) -> str:
     return jwt.encode(payload, SECRET_KEY, algorithm=ALGORITHM)
 
 
-def get_current_user(authorization: Optional[str] = Header(None)):
+def get_current_user(
+    authorization: Optional[str] = Header(None), db: Session = Depends(get_db)
+):
     if not authorization or not authorization.startswith("Bearer "):
         raise HTTPException(status_code=401, detail="Not authenticated")
 
     token = authorization.split(" ", 1)[1]
     try:
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-        user = get_user_by_id(payload.get("sub"))
+        user = get_user_by_id(db, payload.get("sub"))
         if not user:
             raise HTTPException(status_code=401, detail="User not found")
         return user
@@ -130,13 +152,15 @@ def health_check():
 
 
 @app.post("/signup")
-def signup(payload: SignupRequest):
+def signup(payload: SignupRequest, db: Session = Depends(get_db)):
     logger.info("Signup request received for username=%s", payload.username)
     try:
         logger.info("Signup request validation passed")
         logger.info("Signup email validation passed for %s", payload.email)
 
-        existing_user = get_user_by_username(payload.username) or get_user_by_email(str(payload.email))
+        existing_user = get_user_by_username(db, payload.username) or get_user_by_email(
+            db, str(payload.email)
+        )
         if existing_user:
             logger.warning("Signup rejected: user already exists for username=%s email=%s", payload.username, payload.email)
             raise HTTPException(status_code=400, detail="User already exists")
@@ -145,7 +169,7 @@ def signup(payload: SignupRequest):
         password_hash = hash_password(payload.password)
         logger.info("Signup password hashing completed")
 
-        logger.info("Signup saving user to in-memory store")
+        logger.info("Signup saving user to database")
         user_id = str(uuid.uuid4())
         user = User(
             id=user_id,
@@ -153,7 +177,7 @@ def signup(payload: SignupRequest):
             email=str(payload.email),
             password_hash=password_hash,
         )
-        save_user(user)
+        save_user(db, user)
         logger.info("Signup user saved successfully id=%s", user_id)
 
         return {"message": "User created successfully"}
@@ -165,8 +189,8 @@ def signup(payload: SignupRequest):
 
 
 @app.post("/login")
-def login(payload: LoginRequest):
-    user = get_user_by_username(payload.username)
+def login(payload: LoginRequest, db: Session = Depends(get_db)):
+    user = get_user_by_username(db, payload.username)
     if not user or not verify_password(payload.password, user.password_hash):
         raise HTTPException(status_code=401, detail="Invalid credentials")
 
@@ -178,7 +202,11 @@ def login(payload: LoginRequest):
 
 
 @app.post("/upload")
-async def upload_resume(file: UploadFile = File(...), user: object = Depends(get_current_user)):
+async def upload_resume(
+    file: UploadFile = File(...),
+    user: object = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
     if not file.filename:
         raise HTTPException(status_code=400, detail="No file provided")
 
@@ -217,7 +245,7 @@ async def upload_resume(file: UploadFile = File(...), user: object = Depends(get
             summary=analysis.get("summary", ""),
             job_match=0,
         )
-        add_analysis(new_analysis)
+        add_analysis(db, new_analysis)
 
         return {
             "filename": destination.name,
@@ -246,21 +274,18 @@ async def upload_resume(file: UploadFile = File(...), user: object = Depends(get
 
 
 @app.get("/history")
-def get_history(user: object = Depends(get_current_user)):
+def get_history(user: object = Depends(get_current_user), db: Session = Depends(get_db)):
     return {
-        "analyses": [
-            analysis.to_dict()
-            for analysis in analyses_db
-            if analysis.user_id == user.id
-        ]
+        "analyses": [analysis.to_dict() for analysis in get_analyses_by_user(db, user.id)]
     }
 
 
 @app.delete("/history/{analysis_id}")
-def delete_history_item(analysis_id: str, user: object = Depends(get_current_user)):
-    global analyses_db
-    new_list = [analysis for analysis in analyses_db if not (analysis.id == analysis_id and analysis.user_id == user.id)]
-    if len(new_list) == len(analyses_db):
+def delete_history_item(
+    analysis_id: str,
+    user: object = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    if not delete_analysis(db, analysis_id, user.id):
         raise HTTPException(status_code=404, detail="Analysis not found")
-    analyses_db = new_list
     return {"message": "Deleted successfully"}

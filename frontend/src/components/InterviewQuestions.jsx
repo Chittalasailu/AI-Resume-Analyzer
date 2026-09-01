@@ -1,5 +1,4 @@
 import { useMemo, useState } from "react";
-import { jsPDF } from "jspdf";
 
 function InterviewQuestions({ analysis, jobDescription }) {
   const [difficulty, setDifficulty] = useState("Medium");
@@ -10,7 +9,6 @@ function InterviewQuestions({ analysis, jobDescription }) {
   const generateQuestions = () => {
     const skills = analysis?.skills || [];
     const strengths = analysis?.strengths || [];
-    const summary = analysis?.summary || "";
     const projects = analysis?.projects || [];
     const jd = jobDescription || "";
 
@@ -77,9 +75,10 @@ function InterviewQuestions({ analysis, jobDescription }) {
     }
   };
 
-  const downloadPdf = () => {
+  const downloadPdf = async () => {
     if (!questions.length) return;
 
+    const { jsPDF } = await import("jspdf");
     const doc = new jsPDF({ unit: "pt", format: "a4" });
     const margin = 40;
     const pageWidth = doc.internal.pageSize.getWidth();
@@ -142,18 +141,18 @@ function InterviewQuestions({ analysis, jobDescription }) {
           </select>
         </label>
 
-        <button className="generate-btn" onClick={generateQuestions}>
-          🧠 Generate Questions
+        <button className="btn btn-primary generate-btn" onClick={generateQuestions}>
+          Generate Questions
         </button>
       </div>
 
       {questions.length > 0 && (
         <div className="questions-actions">
-          <button className="secondary-btn" onClick={copyQuestions}>
-            {copied ? "✅ Copied" : "📋 Copy Questions"}
+          <button className="btn btn-secondary btn-sm" onClick={copyQuestions}>
+            {copied ? "Copied" : "Copy Questions"}
           </button>
-          <button className="secondary-btn" onClick={downloadPdf}>
-            ⬇️ Download PDF
+          <button className="btn btn-secondary btn-sm" onClick={downloadPdf}>
+            Download PDF
           </button>
         </div>
       )}

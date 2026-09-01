@@ -14,17 +14,25 @@ function JobDescription({ onAnalyze, error }) {
         <p>Paste a job description to see how well your resume aligns.</p>
       </div>
 
+      <label htmlFor="job-description-textarea" className="sr-only">
+        Job description
+      </label>
       <textarea
+        id="job-description-textarea"
         className="job-description-input"
         placeholder="Paste the job description here..."
         value={text}
         onChange={(e) => setText(e.target.value)}
       />
 
-      {error && <p className="validation-message">{error}</p>}
+      {error && (
+        <p className="validation-message" role="alert">
+          {error}
+        </p>
+      )}
 
-      <button className="analyze-match-btn" onClick={handleSubmit}>
-        🔎 Analyze Match
+      <button className="btn btn-primary analyze-match-btn" onClick={handleSubmit}>
+        Analyze Match
       </button>
     </div>
   );

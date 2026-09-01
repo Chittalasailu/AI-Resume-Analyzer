@@ -1,5 +1,4 @@
 import { useMemo, useState } from "react";
-import { jsPDF } from "jspdf";
 
 function CoverLetter({ analysis, filename }) {
   const [companyName, setCompanyName] = useState("");
@@ -48,9 +47,10 @@ ${filename || "Applicant"}`;
     }
   };
 
-  const downloadAsPdf = () => {
+  const downloadAsPdf = async () => {
     if (!coverLetter) return;
 
+    const { jsPDF } = await import("jspdf");
     const doc = new jsPDF({ unit: "pt", format: "a4" });
     const margin = 40;
     const pageWidth = doc.internal.pageSize.getWidth();
@@ -76,33 +76,41 @@ ${filename || "Applicant"}`;
       </div>
 
       <div className="cover-letter-form">
-        <input
-          type="text"
-          placeholder="Company Name"
-          value={companyName}
-          onChange={(e) => setCompanyName(e.target.value)}
-        />
+        <div className="form-field">
+          <label htmlFor="cover-letter-company">Company name</label>
+          <input
+            id="cover-letter-company"
+            type="text"
+            placeholder="e.g. Acme Corp"
+            value={companyName}
+            onChange={(e) => setCompanyName(e.target.value)}
+          />
+        </div>
 
-        <input
-          type="text"
-          placeholder="Job Title"
-          value={jobTitle}
-          onChange={(e) => setJobTitle(e.target.value)}
-        />
+        <div className="form-field">
+          <label htmlFor="cover-letter-role">Job title</label>
+          <input
+            id="cover-letter-role"
+            type="text"
+            placeholder="e.g. Frontend Engineer"
+            value={jobTitle}
+            onChange={(e) => setJobTitle(e.target.value)}
+          />
+        </div>
 
-        <button className="generate-btn" onClick={generateLetter}>
-          ✨ Generate Cover Letter
+        <button className="btn btn-primary generate-btn" onClick={generateLetter}>
+          Generate Cover Letter
         </button>
       </div>
 
       {coverLetter && (
         <div className="cover-letter-output">
           <div className="cover-letter-actions">
-            <button className="secondary-btn" onClick={copyToClipboard}>
-              {copied ? "✅ Copied" : "📋 Copy to Clipboard"}
+            <button className="btn btn-secondary btn-sm" onClick={copyToClipboard}>
+              {copied ? "Copied" : "Copy to clipboard"}
             </button>
-            <button className="secondary-btn" onClick={downloadAsPdf}>
-              ⬇️ Download as PDF
+            <button className="btn btn-secondary btn-sm" onClick={downloadAsPdf}>
+              Download as PDF
             </button>
           </div>
 

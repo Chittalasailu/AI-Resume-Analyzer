@@ -1,6 +1,5 @@
 import logging
 import os
-import traceback
 import uuid
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -11,7 +10,7 @@ import jwt
 from dotenv import load_dotenv
 from fastapi import Depends, FastAPI, File, Header, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel, EmailStr, Field
 
 load_dotenv()
 
@@ -40,9 +39,9 @@ logger = logging.getLogger("resume_analyzer")
 
 
 class SignupRequest(BaseModel):
-    username: str
+    username: str = Field(min_length=3, max_length=32)
     email: EmailStr
-    password: str
+    password: str = Field(min_length=8, max_length=128)
 
 
 class LoginRequest(BaseModel):
@@ -123,6 +122,11 @@ def get_current_user(authorization: Optional[str] = Header(None)):
 @app.get("/")
 def read_root():
     return {"message": "AI Resume Analyzer API is running"}
+
+
+@app.get("/health")
+def health_check():
+    return {"status": "ok"}
 
 
 @app.post("/signup")
@@ -233,16 +237,11 @@ async def upload_resume(file: UploadFile = File(...), user: object = Depends(get
     except AnalysisError as exc:
         raise HTTPException(status_code=503, detail=str(exc))
 
-    except Exception as exc:
-        import traceback
-
-        print("\n========== ERROR ==========")
-        traceback.print_exc()
-        print("===========================\n")
-
+    except Exception:
+        logger.exception("Unexpected error while processing resume upload")
         raise HTTPException(
             status_code=500,
-            detail=str(exc)
+            detail="An unexpected error occurred while processing your resume. Please try again.",
         )
 
 

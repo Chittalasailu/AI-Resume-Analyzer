@@ -1,5 +1,3 @@
-import { jsPDF } from "jspdf";
-
 const addBulletList = (doc, items, startY, indent = 18) => {
   if (!items || items.length === 0) {
     doc.text("None", startY, 18);
@@ -14,7 +12,7 @@ const addBulletList = (doc, items, startY, indent = 18) => {
   return startY + items.length * 8 + 6;
 };
 
-export const generateResumeReport = ({
+export const generateResumeReport = async ({
   filename = "resume",
   atsScore,
   skills = [],
@@ -27,6 +25,7 @@ export const generateResumeReport = ({
   suggestedKeywords = [],
   generatedAt,
 }) => {
+  const { jsPDF } = await import("jspdf");
   const doc = new jsPDF({ unit: "pt", format: "a4" });
   const pageWidth = doc.internal.pageSize.getWidth();
   const pageHeight = doc.internal.pageSize.getHeight();

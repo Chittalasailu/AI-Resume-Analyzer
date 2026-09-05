@@ -4,7 +4,7 @@ A full-stack web app where users upload a resume, get an instant ATS-style score
 
 **Live frontend:** [ai-resume-analyzer-sailu1.vercel.app](https://ai-resume-analyzer-sailu1.vercel.app/) (current production deployment)
 
-**Live backend:** [ai-resume-analyzer-b219.onrender.com](https://ai-resume-analyzer-b219.onrender.com) (Render — see [Deployment](#deployment) for current status)
+**Live backend:** [ai-resume-analyzer-b219.onrender.com](https://ai-resume-analyzer-b219.onrender.com) (Render — see [Production Deployment](#production-deployment) for current status)
 
 ![ATS Score card](docs/screenshots/analysis-results.png)
 
@@ -112,7 +112,7 @@ AI-Resume-Analyzer/
 
 ## API
 
-Base URL (production): the backend is deployed on Render (see [Deployment](#deployment)).
+Base URL (production): the backend is deployed on Render (see [Production Deployment](#production-deployment)).
 
 | Method | Route | Auth | Request Body | Response | Purpose |
 |---|---|---|---|---|---|
@@ -126,59 +126,79 @@ Base URL (production): the backend is deployed on Render (see [Deployment](#depl
 
 Auth-protected routes expect `Authorization: Bearer <access_token>`.
 
-## Local Setup
+## Local Development
 
 ### Prerequisites
-- Node.js (for the frontend)
+- Node.js 20+ (for the frontend)
 - Python 3.12+ (for the backend)
+- A [Google Gemini API key](https://aistudio.google.com/app/apikey) (free tier is fine)
+- No local database install required — the backend falls back to a local SQLite file when `DATABASE_URL` is unset (see [Database](#database) below)
 
-### Backend
+### Installation & Environment Variables
 
 ```bash
 git clone https://github.com/Chittalasailu/AI-Resume-Analyzer.git
-cd AI-Resume-Analyzer/backend
+cd AI-Resume-Analyzer
+```
 
+Backend configuration lives in `backend/.env` (gitignored, never committed). Copy the template and fill in your own key:
+
+```bash
+cd backend
+cp .env.example .env   # Windows: copy .env.example .env
+```
+
+See [backend/.env.example](backend/.env.example) for the full template. Variables:
+
+| Variable | Required locally? | Purpose |
+|---|---|---|
+| `GEMINI_API_KEY` | **Yes** | Google Gemini API key — required for `/upload` to generate a real analysis. Without it, `/upload` returns a `503` |
+| `JWT_SECRET` | No | Secret used to sign JWTs. Falls back to an insecure development-only default if unset locally, but is **required** in production (see below) |
+| `DATABASE_URL` | No | PostgreSQL connection string. Falls back to a local SQLite file (`resume_analyzer.db`) when unset — this is the intended local dev setup, no Postgres install needed |
+| `FRONTEND_URL` | No | Optional extra CORS origin, on top of the localhost dev ports and known Vercel deployments already allowed in `backend/app/main.py` |
+
+Frontend configuration lives in `frontend/.env` (gitignored). Copy its template too:
+
+```bash
+cd ../frontend
+cp .env.example .env   # Windows: copy .env.example .env
+```
+
+| Variable | Required locally? | Purpose |
+|---|---|---|
+| `VITE_API_URL` | Recommended | Base URL of the backend API. Falls back to the deployed Render backend if unset — set this to `http://localhost:8000` to point the frontend at your local backend instead |
+
+### Database
+
+No setup step is needed for local development: leave `DATABASE_URL` unset and the backend automatically uses a local SQLite file (`backend/resume_analyzer.db`, gitignored). Tables are created automatically on first startup via `Base.metadata.create_all()` — this is additive/idempotent and never drops or overwrites existing data. If you want to test against Postgres locally instead, set `DATABASE_URL` to any reachable PostgreSQL connection string.
+
+### Run the Backend
+
+```bash
+cd backend
 python -m venv venv
 venv\Scripts\activate        # Windows
 # source venv/bin/activate   # macOS/Linux
 
 pip install -r requirements.txt
-
-# create backend/.env — see Environment Variables below
 uvicorn app.main:app --reload --port 8000
 ```
 
-### Frontend
+The API is now at `http://localhost:8000` (check `GET /health`).
+
+### Run the Frontend
 
 ```bash
-cd AI-Resume-Analyzer/frontend
+cd frontend
 npm install
 npm run dev
 ```
 
-> **Note:** the frontend reads the backend base URL from `VITE_API_URL` (see `frontend/.env.example`), falling back to the deployed Render backend if unset. To run the frontend against your local backend, create `frontend/.env` with `VITE_API_URL=http://localhost:8000` (port `5173`/`5174` are already allowed in the CORS `allow_origins` list in `backend/app/main.py`).
+The app is now at `http://localhost:5173` (ports `5173`/`5174` are already allowed in the backend's CORS `allow_origins` list).
 
-## Environment Variables
+## Production Deployment
 
-Backend configuration lives in `backend/.env` (gitignored). See [backend/.env.example](backend/.env.example):
-
-| Variable | Purpose |
-|---|---|
-| `GEMINI_API_KEY` | Google Gemini API key — required for `/upload` to generate a real analysis |
-| `JWT_SECRET` | Secret used to sign JWTs. Falls back to an insecure default (`dev-secret-key`) locally, but is **required** when `RENDER` is set — the app refuses to start without it there |
-| `DATABASE_URL` | PostgreSQL connection string. Falls back to a local SQLite file (`resume_analyzer.db`) when unset, for local dev only — **required** when `RENDER` is set |
-| `FRONTEND_URL` | Optional extra CORS origin, on top of the localhost dev ports and known Vercel deployments already allowed in `backend/app/main.py` |
-
-Frontend configuration lives in `frontend/.env` (gitignored). See [frontend/.env.example](frontend/.env.example):
-
-| Variable | Purpose |
-|---|---|
-| `VITE_API_URL` | Base URL of the backend API. Falls back to the deployed Render backend if unset |
-
-## Deployment
-
-- **Frontend:** [Vercel](https://vercel.com) — static build of the Vite/React app
-- **Backend:** [Render](https://render.com) — FastAPI service run with Uvicorn, configured via [render.yaml](render.yaml)
+This project is architected for the simplest deployment split that fits a Vite/React + FastAPI app: a **static frontend on Vercel** and a **containerless Python web service + managed Postgres on Render**, wired together by one environment variable on each side (`VITE_API_URL` on Vercel, `FRONTEND_URL`/`DATABASE_URL`/etc. on Render). [render.yaml](render.yaml) already declares the backend service and its database as a Render Blueprint, so no extra deployment config files are needed — Vercel needs none either, since it auto-detects a Vite app's build command and output directory.
 
 **Current URLs:**
 
@@ -186,9 +206,35 @@ Frontend configuration lives in `frontend/.env` (gitignored). See [frontend/.env
 |---|---|---|
 | Frontend (production) | [ai-resume-analyzer-sailu1.vercel.app](https://ai-resume-analyzer-sailu1.vercel.app/) | Vercel Deployment Protection (SSO) may be enabled — if visitors are redirected to a Vercel login instead of the app, disable it under the Vercel project's **Settings → Deployment Protection** |
 | Frontend (older deploy) | [ai-resume-analyzer-tan-theta.vercel.app](https://ai-resume-analyzer-tan-theta.vercel.app/) | Publicly reachable; kept only as a fallback reference, not the canonical URL |
-| Backend | [ai-resume-analyzer-b219.onrender.com](https://ai-resume-analyzer-b219.onrender.com) | Needs to be (re)deployed from `render.yaml` — see note below |
+| Backend | [ai-resume-analyzer-b219.onrender.com](https://ai-resume-analyzer-b219.onrender.com) | Needs to be (re)deployed from `render.yaml` — see below |
 
-> **Backend redeploy note:** Render free-tier services are deleted after extended inactivity. If the backend URL above doesn't respond to `GET /health`, recreate the Web Service in the Render dashboard from this repo (Blueprint: `render.yaml`, root directory `backend`), set the `JWT_SECRET` and `GEMINI_API_KEY` secrets (see [Environment Variables](#environment-variables)), and deploy. Render will reuse this exact URL only if the service is recreated with the same name/slug; if Render assigns a different URL, update `VITE_API_URL` in the Vercel project's environment variables to match — no code change is required, since the frontend already reads the backend URL from that variable.
+### Backend (Render)
+
+1. In the Render dashboard, **New → Blueprint**, point it at this GitHub repo. Render reads [render.yaml](render.yaml) and provisions both the web service (`rootDir: backend`, build `pip install -r requirements.txt`, start `uvicorn app.main:app --host 0.0.0.0 --port $PORT`, health check `/health`) and a free managed PostgreSQL database in one step.
+2. Render wires `DATABASE_URL` automatically from the provisioned database (`fromDatabase` in render.yaml) — you don't set this one manually.
+3. Set the two secrets Render leaves blank (`sync: false` in render.yaml) in the service's **Environment** tab:
+   - `JWT_SECRET` — a long random string (e.g. `openssl rand -hex 32`); the app **refuses to start on Render without it**
+   - `GEMINI_API_KEY` — your Gemini API key
+4. `FRONTEND_URL` is already pre-filled in render.yaml to the production Vercel URL; update it there (or override in the dashboard) if your Vercel URL differs.
+5. Deploy. Because Render free-tier services spin down after inactivity and are deleted after extended inactivity, if the backend URL stops responding to `GET /health`, just redeploy the Blueprint the same way — it's stateless except for the database, which persists independently.
+
+### Frontend (Vercel)
+
+1. In Vercel, **Add New → Project**, import this repo, and set the project **Root Directory** to `frontend`. Vercel auto-detects Vite (`npm run build`, output `dist`) — no extra config file is needed.
+2. Set the environment variable `VITE_API_URL` to your Render backend URL (e.g. `https://ai-resume-analyzer-b219.onrender.com`) in the Vercel project's **Settings → Environment Variables**, then redeploy — Vite bakes env vars in at build time, so this must be set *before* building, not just at runtime.
+3. If Render ever assigns a different backend URL (e.g. after recreating the service), update `VITE_API_URL` here to match — no code change is required, since the frontend always reads the backend URL from this variable and never hardcodes `localhost`.
+
+### Production Environment Variables Summary
+
+| Variable | Set where | Notes |
+|---|---|---|
+| `JWT_SECRET` | Render | Required — app refuses to start on Render without it |
+| `GEMINI_API_KEY` | Render | Required for `/upload` to work |
+| `DATABASE_URL` | Render | Auto-populated from the Blueprint's managed Postgres database |
+| `FRONTEND_URL` | Render | Your production frontend origin, for CORS (already defaulted in render.yaml) |
+| `VITE_API_URL` | Vercel | Your production backend origin |
+
+CORS in `backend/app/main.py` uses an explicit origin allowlist (localhost dev ports + known Vercel URLs + `FRONTEND_URL`), never a wildcard — so a production frontend origin must be present in that list (via `FRONTEND_URL` or a code update) for the browser to be able to call the API.
 
 ## Testing
 

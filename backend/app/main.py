@@ -36,6 +36,11 @@ BASE_DIR: Final[Path] = Path(__file__).resolve().parent.parent
 UPLOAD_DIR: Final[Path] = BASE_DIR / "uploads"
 UPLOAD_DIR.mkdir(exist_ok=True)
 
+# Resumes are only ever read once (to extract text) and are not served back
+# to clients, so a generous-but-bounded size limit protects disk/memory
+# without needing to keep the file around afterward (see cleanup in /upload).
+MAX_UPLOAD_BYTES: Final[int] = 10 * 1024 * 1024  # 10 MB
+
 IS_RENDER: Final[bool] = os.getenv("RENDER") is not None
 SECRET_KEY = os.getenv("JWT_SECRET")
 if not SECRET_KEY:
@@ -43,7 +48,7 @@ if not SECRET_KEY:
         raise RuntimeError(
             "JWT_SECRET environment variable must be set when running on Render."
         )
-    SECRET_KEY = "dev-secret-key"
+    SECRET_KEY = "dev-only-insecure-secret-do-not-use-in-production"
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 30
 
@@ -74,7 +79,14 @@ class AnalysisRequest(BaseModel):
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    init_db()
+    try:
+        init_db()
+    except Exception:
+        logger.exception(
+            "Database initialization failed. Check that DATABASE_URL is set "
+            "correctly and the database is reachable."
+        )
+        raise
     yield
 
 
@@ -210,22 +222,34 @@ async def upload_resume(
     if not file.filename:
         raise HTTPException(status_code=400, detail="No file provided")
 
-    file_extension = Path(file.filename).suffix.lower()
+    original_filename = Path(file.filename).name
+    file_extension = Path(original_filename).suffix.lower()
     if file_extension not in {".pdf", ".docx"}:
         raise HTTPException(
             status_code=400,
             detail="Only PDF and DOCX files are allowed"
         )
 
-    destination = UPLOAD_DIR / Path(file.filename).name
+    # Stored under a unique name so concurrent uploads (from the same or
+    # different users) can never collide/overwrite each other on disk;
+    # the user-facing filename is tracked separately in the Analysis row.
+    destination = UPLOAD_DIR / f"{uuid.uuid4().hex}{file_extension}"
 
     try:
-        # Save uploaded file
+        # Save uploaded file, enforcing a size cap while streaming so an
+        # oversized upload can't exhaust disk space before it's rejected.
+        total_bytes = 0
         with destination.open("wb") as buffer:
             while True:
                 chunk = await file.read(1024 * 1024)
                 if not chunk:
                     break
+                total_bytes += len(chunk)
+                if total_bytes > MAX_UPLOAD_BYTES:
+                    raise HTTPException(
+                        status_code=413,
+                        detail="File too large. Maximum allowed size is 10MB.",
+                    )
                 buffer.write(chunk)
 
         # Extract text
@@ -237,7 +261,7 @@ async def upload_resume(
         new_analysis = Analysis(
             id=str(uuid.uuid4()),
             user_id=user.id,
-            filename=destination.name,
+            filename=original_filename,
             ats_score=analysis.get("ats_score", 0),
             skills=analysis.get("skills", []),
             strengths=analysis.get("strengths", []),
@@ -248,10 +272,13 @@ async def upload_resume(
         add_analysis(db, new_analysis)
 
         return {
-            "filename": destination.name,
+            "filename": original_filename,
             "status": "uploaded successfully",
             "analysis": analysis,
         }
+
+    except HTTPException:
+        raise
 
     except UnsupportedFileTypeError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
@@ -274,6 +301,11 @@ async def upload_resume(
             status_code=500,
             detail="An unexpected error occurred while processing your resume. Please try again.",
         )
+
+    finally:
+        # The file is only ever needed transiently for text extraction and
+        # is never served back to clients, so don't let it linger on disk.
+        destination.unlink(missing_ok=True)
 
 
 @app.get("/history")

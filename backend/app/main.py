@@ -29,7 +29,7 @@ from app.models import (
     get_user_by_username,
     save_user,
 )
-from app.parser import UnsupportedFileTypeError, extract_text
+from app.parser import ResumeParsingError, UnsupportedFileTypeError, extract_text
 
 # Base directory for the backend project.
 BASE_DIR: Final[Path] = Path(__file__).resolve().parent.parent
@@ -254,6 +254,9 @@ async def upload_resume(
         }
 
     except UnsupportedFileTypeError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+    except ResumeParsingError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
 
     except FileNotFoundError as exc:

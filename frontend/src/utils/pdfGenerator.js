@@ -1,6 +1,6 @@
 const addBulletList = (doc, items, startY, indent = 18) => {
   if (!items || items.length === 0) {
-    doc.text("None", startY, 18);
+    doc.text("None", indent, startY);
     return startY + 12;
   }
 

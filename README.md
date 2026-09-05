@@ -29,7 +29,7 @@ The backend is a FastAPI service with real signup/login (hashed passwords + JWT 
 
 ## Notes on the Analysis Engine
 
-`backend/app/ai.py` sends the extracted resume text to the Gemini API (`google-genai` SDK, model configured via `MODEL_NAME`) with a structured JSON response schema, and returns a genuine, resume-specific `ats_score`, `skills`, `strengths`, `improvements`, and `summary` — it is not a fixed/canned response. This requires a valid `GEMINI_API_KEY` to be set on the backend; if the key is missing or the Gemini API call fails, `/upload` returns a `503` with a readable error instead of a fake result. The job-match, cover letter, and interview-question features are genuine, working features, but they run entirely client-side as rule-based/template logic, not LLM calls.
+`backend/app/ai.py` sends the extracted resume text to the Gemini API (`google-genai` SDK, model set via the `MODEL_NAME` constant at the top of that file) with a structured JSON response schema, and returns a genuine, resume-specific `ats_score`, `skills`, `strengths`, `improvements`, and `summary` — it is not a fixed/canned response. This requires a valid `GEMINI_API_KEY` to be set on the backend; if the key is missing or the Gemini API call fails, `/upload` returns a `503` with a readable error instead of a fake result. The job-match, cover letter, and interview-question features are genuine, working features, but they run entirely client-side as rule-based/template logic, not LLM calls.
 
 ## Screenshots
 
@@ -55,7 +55,7 @@ Full analysis dashboard (ATS score, skills, strengths, suggestions, summary): [d
 | Authentication | JWT (PyJWT) + bcrypt password hashing |
 | Resume Parsing | pdfplumber (PDF), python-docx (DOCX) |
 | AI | Google Gemini (`google-genai`) — powers live resume analysis |
-| Data Storage | In-memory Python data structures — no persistent database yet |
+| Data Storage | SQLAlchemy ORM — PostgreSQL in production, local SQLite file (`resume_analyzer.db`) when `DATABASE_URL` is unset |
 | Deployment | Vercel (frontend), Render (backend) |
 | Linting | Oxlint |
 
@@ -71,7 +71,7 @@ flowchart TD
     PARSE --> ANALYZE["analyze_resume()"]
     ANALYZE -->|Structured JSON request| GEMINI["Google Gemini API"]
     GEMINI --> ANALYZE
-    ANALYZE --> STORE[("In-memory store<br/>users_db / analyses_db")]
+    ANALYZE --> STORE[("PostgreSQL / SQLite<br/>via SQLAlchemy (users, analyses)")]
     AUTH --> STORE
 ```
 
@@ -84,13 +84,15 @@ AI-Resume-Analyzer/
 │   │   ├── main.py        # FastAPI app, routes, auth, CORS
 │   │   ├── ai.py           # Resume analysis via the Gemini API
 │   │   ├── parser.py       # PDF/DOCX text extraction
-│   │   └── models.py       # User/Analysis dataclasses + in-memory stores
+│   │   ├── database.py     # SQLAlchemy engine/session (PostgreSQL or SQLite)
+│   │   └── models.py       # User/Analysis SQLAlchemy models + query helpers
+│   ├── tests/              # Pytest suite (auth, analysis, persistence)
 │   ├── uploads/            # Uploaded resumes at runtime (gitignored)
 │   └── requirements.txt
 ├── frontend/
 │   ├── src/
 │   │   ├── App.jsx                  # Routes, upload flow, dashboard
-│   │   ├── pages/                   # Login, Signup, History
+│   │   ├── pages/                   # Login, Signup, Dashboard, History
 │   │   ├── components/              # JobDescription, MatchResults,
 │   │   │                            # CoverLetter, InterviewQuestions
 │   │   ├── components/charts/       # ATSChart, SkillsChart (Chart.js)
@@ -163,7 +165,9 @@ Backend configuration lives in `backend/.env` (gitignored). See [backend/.env.ex
 | Variable | Purpose |
 |---|---|
 | `GEMINI_API_KEY` | Google Gemini API key — required for `/upload` to generate a real analysis |
-| `JWT_SECRET` | Secret used to sign JWTs. Falls back to an insecure default if unset — always set this explicitly outside of local dev |
+| `JWT_SECRET` | Secret used to sign JWTs. Falls back to an insecure default (`dev-secret-key`) locally, but is **required** when `RENDER` is set — the app refuses to start without it there |
+| `DATABASE_URL` | PostgreSQL connection string. Falls back to a local SQLite file (`resume_analyzer.db`) when unset, for local dev only — **required** when `RENDER` is set |
+| `FRONTEND_URL` | Optional extra CORS origin, on top of the localhost dev ports and known Vercel deployments already allowed in `backend/app/main.py` |
 
 Frontend configuration lives in `frontend/.env` (gitignored). See [frontend/.env.example](frontend/.env.example):
 
@@ -188,19 +192,25 @@ Frontend configuration lives in `frontend/.env` (gitignored). See [frontend/.env
 
 ## Testing
 
-No automated test suite is currently included in this project. This pass verified the API manually end-to-end (signup, duplicate signup, login, invalid login, authenticated upload with a live Gemini analysis, unauthenticated upload rejection, history list/delete, CORS preflight) and walked the built frontend through a headless browser at desktop, tablet, and mobile widths.
+The backend has an automated Pytest suite (`backend/tests/`) covering signup/login, JWT auth, resume upload → persisted analysis, per-user history isolation, and delete authorization, run against an isolated SQLite database. Install test dependencies and run it from `backend/`:
+
+```bash
+pip install -r requirements-dev.txt
+pytest
+```
+
+This pass also re-verified the app manually end-to-end: signup, duplicate signup, login, invalid login, authenticated upload with a live Gemini analysis (including a corrupted-file upload correctly rejected with a 400), unauthenticated upload rejection, history list/view/delete, and the built frontend through a browser (landing, signup, dashboard, history, logout/login).
 
 ## Known Limitations
 
-- **Storage is in-memory** — `users_db` and `analyses_db` (`backend/app/models.py`) live in process memory, so every account and saved analysis is lost on backend restart or redeploy. This is a pre-existing architectural choice, not a regression introduced in this pass; moving to a persistent database (e.g., PostgreSQL) is the main remaining step before this can hold real user data reliably.
 - **Job matching runs client-side** — the match percentage is a simple keyword-overlap calculation in the browser (`Dashboard.jsx`), not a backend or LLM call.
+- **Uploaded resumes are stored on local disk** (`backend/uploads/`) — fine for local dev, but on Render this is ephemeral storage that doesn't survive a redeploy.
 
 ## Future Improvements
 
-- Replace in-memory storage (`users_db`, `analyses_db`) with a persistent database (e.g., PostgreSQL) so accounts and history survive a server restart or redeploy
 - Move job-description matching server-side with real NLP-based similarity instead of client-side keyword overlap
-- Add automated backend and frontend tests
 - Add a persistent disk or object storage for uploaded resumes on Render instead of the local `backend/uploads/` directory
+- Add automated frontend tests (the backend already has a Pytest suite)
 
 ## License
 
